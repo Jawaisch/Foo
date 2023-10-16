@@ -1,0 +1,46 @@
+#!/usr/bin/env groovy
+
+def label = "foo-${UUID.randomUUID().toString()}"
+def home = "/home/jenkins"
+def varUrl='https://opensearch.df-logging.svc.cluster.local:9200/jmx-monitoring-*/_search'
+def varCreds='admin:admin'
+def varDate= new Date().format("yyyy-MM-dd")
+def varThreshold=100
+
+podTemplate(label: label,
+        containers: [
+                containerTemplate(name: 'alpine', image: 'alpine:3.11', ttyEnabled: true, command: 'cat'),
+        ],
+        ) {
+    node(label) {
+        stage('Get jq') {
+            container('alpine') {
+                sh 'apk add curl'
+                sh 'curl --silent -L https://github.com/stedolan/jq/releases/download/jq-1.6/jq-linux64 --output /usr/local/bin/jq ; chmod +x /usr/local/bin/jq'
+            }
+        }
+        stage('Query Opensearch') {
+            container('alpine') {
+                sh """
+                    curl --silent \
+                        -u $varCreds \
+                        -H "Content-Type: application/json" \
+                        -XGET --insecure $varUrl \
+                        -d \'{"version":true,"size":500,"sort":[{"timestamp":{"order":"desc","unmapped_type":"boolean"}}],"stored_fields":["*"],"script_fields":{},"docvalue_fields":[{"field":"@timestamp","format":"date_time"},{"field":"eventTimestamp","format":"date_time"},{"field":"time","format":"date_time"},{"field":"timestamp","format":"date_time"}],"_source":["type","eventType"],"query":{"bool":{"must":[],"filter":[{"match_all":{}},{"match_all":{}},{"match_phrase":{"type":"KubernetesEvents"}},{"match_phrase":{"eventType":"Warning"}},{"range":{"timestamp":{"gte":"'"$varDate"'T00:00:00.000Z","lte":"'"$varDate"'T23:59:59.999Z","format":"strict_date_optional_time"}}}],"should":[],"must_not":[]}}}\' \
+                        | jq \'if .hits.hits[]._source.eventType == "Warning" then true else empty end\' \
+                        | wc -l > /home/jenkins/amountOfWarnings.txt
+                   """
+                sh 'cat /home/jenkins/amountOfWarnings.txt'
+            }
+        }
+        stage('Evaluate result') {
+            container('alpine') {
+                sh "cat /home/jenkins/amountOfWarnings.txt"
+                sh """
+                    [ \$(cat /home/jenkins/amountOfWarnings.txt) -gt $varThreshold ] && exit 1
+                    exit 0
+                   """
+            }
+        }
+    }
+}

@@ -1,0 +1,34 @@
+#!/usr/bin/env groovy
+
+folder('Bar'){
+    description('Folder containing all jobs for Bar')
+}
+
+pipelineJob('Bar/bar-test') {
+    displayName('Bar Test Pipeline')
+
+    logRotator {
+        numToKeep(10)
+        daysToKeep(30)
+    }
+
+    configure { project ->
+        project / 'properties' / 'org.jenkinsci.plugins.workflow.job.properties.DurabilityHintJobProperty' {
+            hint('PERFORMANCE_OPTIMIZED')
+        }
+    }
+
+    definition {
+        cpsScm {
+            scm {
+                git {
+                    remote {
+                        url('http://gitea.default.svc.cluster.local/bn_user/Foo.git')
+                    }
+                    branches('*/master')
+                }
+            }
+            scriptPath('cicd/pipelines/bar.jenkins')
+        }
+    }
+}

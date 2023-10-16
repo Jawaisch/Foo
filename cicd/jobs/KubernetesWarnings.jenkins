@@ -1,0 +1,30 @@
+#!/usr/bin/env groovy
+
+pipelineJob('KubernetesWarnings') {
+    displayName('Kubernetes Warnings Monitoring')
+
+    logRotator {
+        numToKeep(10)
+        daysToKeep(30)
+    }
+
+    configure { project ->
+        project / 'properties' / 'org.jenkinsci.plugins.workflow.job.properties.DurabilityHintJobProperty' {
+            hint('PERFORMANCE_OPTIMIZED')
+        }
+    }
+
+    definition {
+        cpsScm {
+            scm {
+                git {
+                    remote {
+                        url('http://gitea.default.svc.cluster.local/bn_user/Foo.git')
+                    }
+                    branches('*/master')
+                }
+            }
+            scriptPath('cicd/pipelines/KubernetesWarnings.jenkins')
+        }
+    }
+}
